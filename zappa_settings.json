@@ -1,0 +1,15 @@
+{
+  "dev": {
+    "app_function": "spotify_api.lambda_handler",
+    "s3_bucket": "spotify-api.dev",
+    "events": [
+      {
+        "function": "spotify_api.lambda_handler",
+        "expression": "rate(1 minute)"
+      }
+    ],
+    "manage_roles": false,
+    "role_name": "S3_Lambda_Full",
+    "keep_warm": false
+  }
+}
