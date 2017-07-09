@@ -1,7 +1,7 @@
 {
   "dev": {
     "app_function": "spotify_api.lambda_handler",
-    "s3_bucket": "spotify-api.dev",
+    "s3_bucket": "spotifyapi-dev",
     "events": [
       {
         "function": "spotify_api.lambda_handler",
