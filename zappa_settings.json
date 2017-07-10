@@ -5,7 +5,7 @@
     "events": [
       {
         "function": "spotify_api.lambda_handler",
-        "expression": "rate(1 minute)"
+        "expression": "rate(20 minutes)"
       }
     ],
     "manage_roles": false,
