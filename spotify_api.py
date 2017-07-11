@@ -3,10 +3,11 @@ import requests
 import cachecontrol
 import copy
 from secret import CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN
-import boto
+import boto3
 import os
 import json
 import datetime
+import gzip
 
 
 ACCESS_TOKEN_KEY = 'access-token.json'
@@ -179,15 +180,15 @@ class Puller:
 def put_file(content):
     print('uploading')
     utc_datetime = datetime.datetime.utcnow()
-    key_name = utc_datetime.strftime("%Y-%m-%d %H%M%S UTC")
+    key_name = utc_datetime.strftime("%Y-%m-%d_%H%M%S_UTC.json.gz")
 
-    connection = boto.s3.connect_to_region('us-east-1')
     stage = os.environ.get('STAGE', 'dev')
     bucket_name = 'spotifyapi-' + stage
+
     print('uploading to {} : {}'.format(bucket_name, key_name))
-    bucket = connection.get_bucket(bucket_name)
-    key = bucket.get_key(key_name, validate=False)
-    key.set_contents_from_string(content)
+    s3 = boto3.resource('s3')
+    object = s3.Object(bucket_name, key_name)
+    object.put(Body=content)
 
 
 def main():
@@ -206,7 +207,9 @@ def main():
         'saved_albums': p.get_saved_albums(),
         'saved_tracks': p.get_saved_tracks()
     }
-    put_file(json.dumps(data))
+    data_bytes = json.dumps(data).encode('utf-8')
+    compressed = gzip.compress(data_bytes)
+    put_file(compressed)
 
 
 def lambda_handler(event, context):
