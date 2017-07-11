@@ -8,6 +8,8 @@ import os
 import json
 import datetime
 import gzip
+import logging
+import sys
 
 
 ACCESS_TOKEN_KEY = 'access-token.json'
@@ -27,10 +29,23 @@ URLS = {
     'saved_tracks': 'https://api.spotify.com/v1/me/tracks'
 }
 
+LOG = logging.getLogger('spotifyapi')
+
+logging.getLogger('botocore').setLevel(logging.WARN)
+logging.getLogger('boto3').setLevel(logging.WARN)
+
+ch = logging.StreamHandler(sys.stdout)
+# ch.setLevel(logging.DEBUG)
+# ch.setFormatter(logging.Formatter(
+#     '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+logging.getLogger().addHandler(ch)
+
 
 class Puller:
     def __init__(self, verbose=True):
         self.verbose=verbose
+        if verbose:
+            LOG.setLevel(logging.DEBUG)
         self.sess = cachecontrol.CacheControl(requests.Session())
         self.auth = (CLIENT_ID, CLIENT_SECRET)
         self.access_token = self._refresh_token()
@@ -38,7 +53,7 @@ class Puller:
 
     def _log(self, msg):
         if self.verbose:
-            print(msg)
+            LOG.info(msg)
 
     def _refresh_token(self):
         data = {
@@ -65,10 +80,13 @@ class Puller:
             self._log('Received Retry-After {} Seconds Header'.format(t))
             time.sleep(int(t))
             return True
-        elif code != 200:
-            raise RuntimeError('returned status code {}'.format(code))
-        else:
+        elif code == 200:
             return False
+        else:
+            LOG.warn('returned status code {}, trying again in 5 seconds'
+                    .format(code))
+            time.sleep(5)
+            return True
 
     def get_top(self, type_, time_range):
         """gets the top artist or tracks
@@ -178,14 +196,14 @@ class Puller:
 
 
 def put_file(content):
-    print('uploading')
+    LOG.info('uploading')
     utc_datetime = datetime.datetime.utcnow()
     key_name = utc_datetime.strftime("%Y-%m-%d_%H%M%S_UTC.json.gz")
 
     stage = os.environ.get('STAGE', 'dev')
     bucket_name = 'spotifyapi-' + stage
 
-    print('uploading to {} : {}'.format(bucket_name, key_name))
+    LOG.info('uploading to {} : {}'.format(bucket_name, key_name))
     s3 = boto3.resource('s3')
     object = s3.Object(bucket_name, key_name)
     object.put(Body=content)
