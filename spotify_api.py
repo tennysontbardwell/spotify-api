@@ -10,6 +10,7 @@ import datetime
 import gzip
 import logging
 import sys
+import time
 
 
 ACCESS_TOKEN_KEY = 'access-token.json'
@@ -30,15 +31,6 @@ URLS = {
 }
 
 LOG = logging.getLogger('spotifyapi')
-
-logging.getLogger('botocore').setLevel(logging.WARN)
-logging.getLogger('boto3').setLevel(logging.WARN)
-
-ch = logging.StreamHandler(sys.stdout)
-# ch.setLevel(logging.DEBUG)
-# ch.setFormatter(logging.Formatter(
-#     '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-logging.getLogger().addHandler(ch)
 
 
 class Puller:
@@ -210,6 +202,9 @@ def put_file(content):
 
 
 def main():
+    for l in ['botocore', 'boto3', 'requests', 'cachecontrol']:
+        logging.getLogger(l).setLevel(logging.WARN)
+
     p = Puller()
     data = {
         'playlists': p.get_playlists(),
@@ -235,5 +230,11 @@ def lambda_handler(event, context):
 
 
 if __name__ == '__main__':
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setLevel(logging.DEBUG)
+    ch.setFormatter(logging.Formatter(
+        '%(asctime)s - [%(name)s] - [%(levelname)s] - %(message)s'))
+    logging.getLogger().addHandler(ch)
+
     main()
 
