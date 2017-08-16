@@ -156,7 +156,7 @@ class Puller:
         r = self.sess.get(URLS['list_playlists'],
                           params=payload, headers=self.auth_headers)
         if self._rate_limit_check(r):
-            return self.get_playlists(self)
+            return self.get_playlists()
         j = r.json()
         playlists = self._iterate_paging_object(j)
 
