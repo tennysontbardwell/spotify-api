@@ -27,8 +27,12 @@ URLS = {
     'top': 'https://api.spotify.com/v1/me/top/{type}',
     'followed_artists': 'https://api.spotify.com/v1/me/following?type=artist',
     'saved_albums': 'https://api.spotify.com/v1/me/albums',
-    'saved_tracks': 'https://api.spotify.com/v1/me/tracks'
+    'saved_tracks': 'https://api.spotify.com/v1/me/tracks',
+    'current_track': 'https://api.spotify.com/v1/me/player/currently-playing',
+    'add_track': 'https://api.spotify.com/v1/playlists/{playlist_id}/tracks',
+    'remove_track': 'https://api.spotify.com/v1/playlists/{playlist_id}/tracks'
 }
+
 
 LOG = logging.getLogger('spotifyapi')
 
@@ -72,10 +76,14 @@ class Puller:
             self._log('Received Retry-After {} Seconds Header'.format(t))
             time.sleep(int(t))
             return True
-        elif code == 200:
+        elif code in [200, 201]:
             return False
+        elif code in [400, 403]:
+            LOG.error('returned status code {}'.format(code))
+            print(response.text)
+            exit()
         else:
-            LOG.warn('returned status code {}, trying again in 5 seconds'
+            LOG.warning('returned status code {}, trying again in 5 seconds'
                     .format(code))
             time.sleep(5)
             return True
@@ -139,6 +147,17 @@ class Puller:
         j['tracks'] = tracks
         return j
 
+    def get_playlists_short(self):
+        """gets a user's list of playlists but not their tracks"""
+        payload = {'limit': 50}
+        self._log('fetching list of playlists')
+        r = self.sess.get(URLS['list_playlists'],
+                          params=payload, headers=self.auth_headers)
+        if self._rate_limit_check(r):
+            return self.get_playlists()
+        j = r.json()
+        return list(self._iterate_paging_object(j))
+
     def get_playlists(self):
         """gets user's list of playlists and their tracks
 
@@ -151,19 +170,10 @@ class Puller:
         :rtype: list
 
         """
-        payload = {'limit': 50}
-        self._log('fetching list of playlists')
-        r = self.sess.get(URLS['list_playlists'],
-                          params=payload, headers=self.auth_headers)
-        if self._rate_limit_check(r):
-            return self.get_playlists()
-        j = r.json()
-        playlists = self._iterate_paging_object(j)
-
         def get_full_playlist(playlist): 
             return self._get_a_playlist(playlist['owner']['id'],playlist['id'])
 
-        return [get_full_playlist(p) for p in playlists]
+        return [get_full_playlist(p) for p in self.get_playlists_short()]
 
     def _get_simple_endpoint(self, url):
         self._log('fetching {}'.format(url))
@@ -186,6 +196,35 @@ class Puller:
     def get_saved_tracks(self):
         self._get_simple_endpoint(URLS['saved_tracks'])
 
+    def get_current_track(self):
+        url = URLS['current_track']
+        self._log('fetching {}'.format(url))
+        r = self.sess.get(url, params=None, headers=self.auth_headers)
+        if self._rate_limit_check(r):
+            return self.get_current_track()
+        return r.json()
+
+    def remove_track(self, playlist_id, track_uri):
+        payload = {
+            "tracks": [{'uri': track_uri}]
+        }
+        url = URLS['remove_track'].format(playlist_id=playlist_id)
+        self._log('removing {} from {}'.format(track_uri, url))
+        r = self.sess.delete(url, data=json.dumps(payload), headers=self.auth_headers)
+        if self._rate_limit_check(r):
+            return self.remove_track(playlist_id, track_uri)
+        return r.json()
+
+    def add_track(self, playlist_id, track_uri):
+        payload = {
+            "uris": [track_uri]
+        }
+        url = URLS['add_track'].format(playlist_id=playlist_id)
+        self._log('adding {} to {}'.format(track_uri, url))
+        r = self.sess.post(url, params=payload, headers=self.auth_headers)
+        if self._rate_limit_check(r):
+            return self.add_track(playlist_id, track_uri)
+        return r.json()
 
 def put_file(content):
     LOG.info('uploading')
@@ -201,10 +240,11 @@ def put_file(content):
     object.put(Body=content)
 
 
-def main():
+def general_setup():
     for l in ['botocore', 'boto3', 'requests', 'cachecontrol']:
         logging.getLogger(l).setLevel(logging.WARN)
 
+def pull():
     p = Puller()
     data = {
         'playlists': p.get_playlists(),
@@ -225,8 +265,28 @@ def main():
     put_file(compressed)
 
 
-def lambda_handler(event, context):
-    main()
+def pull_handler(event, context):
+    pull()
+
+def move_current_song(event, context):
+    def uri_to_id(uri):
+        return uri.split(':')[-1]
+
+    p = Puller()
+    r = p.get_current_track()
+    if r['item']:
+        track = r['item']['uri']
+    if r['context']['type'] == 'playlist':
+        source_id = uri_to_id(r['context']['uri'])
+    print(track)
+    print(source_id)
+
+    playlists = p.get_playlists_short()
+    target_uri = next(x for x in playlists if x['name'] == 'Liked')['uri']
+    target_id = uri_to_id(target_uri)
+    print(target_id)
+    p.add_track(target_id, track)
+    p.remove_track(source_id, track)
 
 
 if __name__ == '__main__':
@@ -236,5 +296,6 @@ if __name__ == '__main__':
         '%(asctime)s - [%(name)s] - [%(levelname)s] - %(message)s'))
     logging.getLogger().addHandler(ch)
 
-    main()
+    move_current_song(None, None)
+
 

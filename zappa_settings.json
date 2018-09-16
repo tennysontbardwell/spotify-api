@@ -4,7 +4,7 @@
     "s3_bucket": "spotifyapi-dev",
     "events": [
       {
-        "function": "spotify_api.lambda_handler",
+        "function": "spotify_api.pull_handler",
         "expression": "rate(60 minutes)"
       }
     ],
