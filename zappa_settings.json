@@ -8,6 +8,7 @@
         "expression": "rate(60 minutes)"
       }
     ],
+    "aws_region": "us-east-1",
     "manage_roles": false,
     "role_name": "S3_Lambda_Full",
     "keep_warm": false
