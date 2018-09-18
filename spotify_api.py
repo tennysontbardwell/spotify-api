@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import requests
 import cachecontrol
+from flask import Flask, request
 import copy
 from secret import CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN
 import boto3
@@ -268,26 +269,91 @@ def pull():
 def pull_handler(event, context):
     pull()
 
-def move_current_song(event, context):
+def move_current_song(target_playlist, add=False):
+    """if target_playlist is none then deletes it"""
+    if target_playlist:
+        target_playlist = target_playlist.lower()
     def uri_to_id(uri):
         return uri.split(':')[-1]
 
     p = Puller()
     r = p.get_current_track()
     if r['item']:
+        track_name = r['item']['name']
         track = r['item']['uri']
+    else:
+        return 'Nothing is playing'
     if r['context']['type'] == 'playlist':
         source_id = uri_to_id(r['context']['uri'])
-    print(track)
-    print(source_id)
+
+    if not target_playlist:
+        p.remove_track(source_id, track)
+        return "\"{}\" deleted from current playlist".format(track_name)
 
     playlists = p.get_playlists_short()
-    target_uri = next(x for x in playlists if x['name'] == 'Liked')['uri']
+    target = [x for x in playlists if x['name'].lower() == target_playlist]
+    if len(target) == 1:
+        target = target[0]
+    else:
+        return "No such playlist '{}'".format(target_playlist)
+    target_uri = target['uri']
+    target_name = target['name']
     target_id = uri_to_id(target_uri)
-    print(target_id)
     p.add_track(target_id, track)
-    p.remove_track(source_id, track)
+    if add:
+        return "\"{}\" added to \"{}\"".format(track_name, target_name)
+    else:
+        p.remove_track(source_id, track)
+        return "\"{}\" moved to \"{}\"".format(track_name, target_name)
 
+app = Flask(__name__)
+
+def handle_api(action):
+    j = request.get_json()
+    # if there is no json lets try to manually decode the string
+    if not j:
+        try:
+            j = json.loads(request.data.decode())
+        except ValueError:
+            j = None
+    if not j:
+        error = "Invalid api_key (no JSON body)"
+        LOG.info(error)
+        return error, 403
+    if j.get('api_key', None) != "FcZzT3FQgNDLkZVt9WvhPXdcf5sszE1N":
+        error = "Invalid api_key"
+        LOG.info(error)
+        return error, 403
+
+    if action == "del":
+        result = move_current_song(None)
+
+    target_playlist = j['target_playlist']
+    if not target_playlist:
+        error = "No target_playlist"
+        LOG.info(error)
+        return error, 403
+
+    if action == "move":
+        result = move_current_song(target_playlist, add=False)
+    if action == "add":
+        result = move_current_song(target_playlist, add=True)
+    LOG.info(result)
+    return result, 200
+
+
+# here is how we are handling routing with flask:
+@app.route('/move', methods=['POST'])
+def move():
+    return handle_api("move")
+
+@app.route('/add', methods=['POST'])
+def add():
+    return handle_api("add")
+
+@app.route('/del', methods=['POST'])
+def delete():
+    return handle_api("del")
 
 if __name__ == '__main__':
     ch = logging.StreamHandler(sys.stdout)
