@@ -2,6 +2,7 @@
 import requests
 import cachecontrol
 from flask import Flask, request
+from flask_cors import CORS
 import copy
 from secret import CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN
 import boto3
@@ -307,6 +308,7 @@ def move_current_song(target_playlist, add=False):
         return "\"{}\" moved to \"{}\"".format(track_name, target_name)
 
 app = Flask(__name__)
+CORS(app)
 
 def handle_api(action):
     j = request.get_json()
