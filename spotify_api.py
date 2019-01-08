@@ -284,7 +284,7 @@ def move_current_song(target_playlist, add=False):
         track = r['item']['uri']
     else:
         return 'Nothing is playing'
-    if r['context']['type'] == 'playlist':
+    if r['context'] and r['context']['type'] == 'playlist':
         source_id = uri_to_id(r['context']['uri'])
 
     if not target_playlist:
